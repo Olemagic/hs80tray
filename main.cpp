@@ -301,17 +301,22 @@ QIcon getBatteryIcon(double percentage, bool charging) {
     QString percentText = QString("%1%").arg(static_cast<int>(percentage));
 
     int iconSize = 128;
-    QPixmap pixmap = baseIcon.pixmap(iconSize, iconSize);
+    QPixmap pixmap(iconSize, iconSize);
+    pixmap.fill(Qt::transparent);
 
     // Paint percentage text on top
     QPainter painter(&pixmap);
+    int iconYOffset = -25;
+    QPixmap basePixmap = baseIcon.pixmap(iconSize, iconSize);
+    painter.drawPixmap(0, iconYOffset, basePixmap);
+
     QFont font("Arial", iconSize / 3, QFont::Bold); // scale font relative to icon
     painter.setFont(font);
 
     // Outline
     QPainterPath path;
     path.addText(pixmap.width() - painter.fontMetrics().horizontalAdvance(percentText) - 5,
-                 pixmap.height() - 5,
+                 pixmap.height() - 15,
                  font,
                  percentText);
 
