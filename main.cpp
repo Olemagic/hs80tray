@@ -7,6 +7,10 @@
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QIcon>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusReply>
+#include <QVariantMap>
 #include <hidapi/hidapi.h>
 #include <iostream>
 #include <sstream>
@@ -79,6 +83,42 @@ int switch_pipewire_sink(const QString sink_name){
     return ret;
 }
 
+void sendDesktopNotification(const QString &summary, const QString &body, const QString &iconName, const QString &urgency = "normal") {
+    QDBusInterface notifyInterface(QStringLiteral("org.freedesktop.Notifications"),
+                                   QStringLiteral("/org/freedesktop/Notifications"),
+                                   QStringLiteral("org.freedesktop.Notifications"),
+                                   QDBusConnection::sessionBus());
+
+    if (!notifyInterface.isValid()) {
+        qWarning() << "Could not connect to freedesktop notification service via D-Bus";
+        return;
+    }
+
+    // urgency hint per spec: 0 = low, 1 = normal, 2 = critical
+    quint8 urgencyLevel = 1;
+    if (urgency == "low") urgencyLevel = 0;
+    else if (urgency == "critical") urgencyLevel = 2;
+
+    QVariantMap hints;
+    hints["urgency"] = QVariant::fromValue(urgencyLevel);
+
+    QDBusReply<uint> reply = notifyInterface.call(
+        QStringLiteral("Notify"),
+        QStringLiteral("HS80 Battery"), // app_name
+        (uint)0,                        // replaces_id (0 = always a new popup)
+        iconName,                       // app_icon (theme icon name)
+        summary,                        // summary
+        body,                           // body
+        QStringList(),                  // actions
+        hints,                          // hints
+        (int)8000                       // expire_timeout in ms
+    );
+
+    if (!reply.isValid()) {
+        qWarning() << "Failed to send desktop notification:" << reply.error().message();
+    }
+}
+
 // --- Worker to run in its own thread so blocking operations do not affect the main UI thread ---
 class HIDWorker : public QObject {
     Q_OBJECT
@@ -95,6 +135,53 @@ signals:
     void batteryUpdated(double percentage, bool charging);
     void trayPassive();
     void trayActive();
+    void sendNotification(QString title, QString body, QString iconName, QString urgency);
+
+private:
+    void checkAndNotify(double percentage, bool charging) {
+        if (percentage < 0) return; // not a valid reading
+
+        if (charging) {
+            // Charging: allow the low-battery notifactions to send again the next time the headset discharges
+            lowBatt15Notified = false;
+            lowBatt10Notified = false;
+
+            if (percentage >= 100) {
+                if (!fullChargeNotified) {
+                    emit sendNotification("Headset Fully Charged",
+                                          "Corsair HS80 battery is at 100%.",
+                                          "battery-full-charged-symbolic", "normal");
+                    fullChargeNotified = true;
+                }
+            } else {
+                fullChargeNotified = false;
+            }
+        } else {
+            // Discharging: allow the full-charge notification to send again the next time it reaches 100%
+            fullChargeNotified = false;
+
+            if (percentage <= 10) {
+                if (!lowBatt10Notified) {
+                    emit sendNotification("Headset Battery Critical",
+                                          "Corsair HS80 battery is at 10% or below.",
+                                          "battery-caution-symbolic", "critical");
+                    lowBatt10Notified = true;
+                    lowBatt15Notified = true; // also under 15%
+                }
+            } else if (percentage <= 15) {
+                if (!lowBatt15Notified) {
+                    emit sendNotification("Headset Battery Low",
+                                          "Corsair HS80 battery is at 15% or below.",
+                                          "battery-low-symbolic", "normal");
+                    lowBatt15Notified = true;
+                }
+            } else {
+                lowBatt15Notified = false;
+                lowBatt10Notified = false;
+            }
+        }
+    }
+
 
 public slots:
     void startPolling() {
@@ -105,7 +192,7 @@ public slots:
             for (size_t i = 0; i < std::size(PRODUCT_ID_ARRAY); i++) {
                 if ((handle = hid_open(VENDOR_ID, PRODUCT_ID_ARRAY[i], nullptr))) {
                     if(g_verbose) qDebug() << "Opened HID device with PID"
-                        << QString::number(PRODUCT_ID_ARRAY[i], 16);
+                                           << QString::number(PRODUCT_ID_ARRAY[i], 16);
                     break;
                 }
             }
@@ -175,6 +262,7 @@ public slots:
                     default:
                     {} break;
                 }
+                checkAndNotify(last_percentage, last_charging);
                 emit batteryUpdated(last_percentage, last_charging);
             }
             else
@@ -190,6 +278,10 @@ public slots:
 
 private:
     hid_device* handle = nullptr;
+    bool lowBatt15Notified = false;
+    bool lowBatt10Notified = false;
+    bool fullChargeNotified = false;
+
 };
 
 QIcon getBatteryIcon(double percentage, bool charging) {
@@ -312,6 +404,12 @@ int main(int argc, char* argv[]) {
         trayPtr->setStatus(KStatusNotifierItem::Active);
     });
 
+    QObject::connect(worker, &HIDWorker::sendNotification,
+                     &app,
+                     [](QString title, QString body, QString iconName, QString urgency){
+                         sendDesktopNotification(title, body, iconName, urgency);
+                     });
+
     QObject::connect(&app, &QApplication::aboutToQuit, &app, [&](){
         if(g_verbose) qDebug() << "change da world my final message. Goodb ye";
         workerThread->quit();
@@ -326,4 +424,3 @@ int main(int argc, char* argv[]) {
 }
 
 #include "main.moc"
-
