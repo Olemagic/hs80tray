@@ -12,7 +12,7 @@
 #include <sstream>
 
 #define VENDOR_ID  0x1B1C
-#define PRODUCT_ID 0x0A73
+static const uint16_t PRODUCT_ID_ARRAY[] = {0x0A73, 0x0A6B};
 #define BATTERY_LEVEL_EVENT 0x0F
 #define CHARGING_EVENT 0x10
 #define POLL_INTERVAL_MS 200
@@ -102,9 +102,15 @@ public slots:
         bool connected = false;
         handle = nullptr;
         while (!handle && !QThread::currentThread()->isInterruptionRequested()) {
-            handle = hid_open(VENDOR_ID, PRODUCT_ID, nullptr);
+            for (size_t i = 0; i < std::size(PRODUCT_ID_ARRAY); i++) {
+                if ((handle = hid_open(VENDOR_ID, PRODUCT_ID_ARRAY[i], nullptr))) {
+                    if(g_verbose) qDebug() << "Opened HID device with PID"
+                        << QString::number(PRODUCT_ID_ARRAY[i], 16);
+                    break;
+                }
+            }
             if (!handle) {
-                std::wcout << L"Unable to open HID device, retrying in 30 seconds..." << std::endl;
+                std::wcout << L"Unable to open any HID device, retrying in 30 seconds..." << std::endl;
                 std::wcout << L"Is the Wireless Receiver connected?" << std::endl;
                 QThread::sleep(30);
             }
