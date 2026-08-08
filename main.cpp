@@ -146,10 +146,10 @@ private:
             lowBatt15Notified = false;
             lowBatt10Notified = false;
 
-            if (percentage >= 100) {
+            if (percentage >= 99) { // Doesnt ever reach 100 for some reason
                 if (!fullChargeNotified) {
                     emit sendNotification("Headset Fully Charged",
-                                          "Corsair HS80 battery is at 100%.",
+                                          "Corsair HS80 battery is fully charged.",
                                           "battery-full-charged-symbolic", "normal");
                     fullChargeNotified = true;
                 }
@@ -163,7 +163,7 @@ private:
             if (percentage <= 10) {
                 if (!lowBatt10Notified) {
                     emit sendNotification("Headset Battery Critical",
-                                          "Corsair HS80 battery is at 10% or below.",
+                                          "Corsair HS80 battery is at 10%.",
                                           "battery-caution-symbolic", "critical");
                     lowBatt10Notified = true;
                     lowBatt15Notified = true; // also under 15%
@@ -171,7 +171,7 @@ private:
             } else if (percentage <= 15) {
                 if (!lowBatt15Notified) {
                     emit sendNotification("Headset Battery Low",
-                                          "Corsair HS80 battery is at 15% or below.",
+                                          "Corsair HS80 battery is at 15%.",
                                           "battery-low-symbolic", "normal");
                     lowBatt15Notified = true;
                 }
