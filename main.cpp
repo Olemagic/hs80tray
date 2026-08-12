@@ -17,6 +17,7 @@
 
 #define VENDOR_ID  0x1B1C
 static const uint16_t PRODUCT_ID_ARRAY[] = {0x0A73, 0x0A6B};
+#define CHARGING_CABLE_PRODUCT_ID 0x0A6A
 #define BATTERY_LEVEL_EVENT 0x0F
 #define CHARGING_EVENT 0x10
 #define POLL_INTERVAL_MS 200
@@ -81,6 +82,16 @@ int switch_pipewire_sink(const QString sink_name){
     }
 
     return ret;
+}
+
+// This allows for checking the charge status without the need of the headset reporting it
+// NOTE: May need an update to allow for multiple PIDs, I only know my own
+// NOTE: Apparently the Headset device is not always connected? Works on startup for me, might need more research
+bool isHeadsetCharging() {
+    struct hid_device_info *devs = hid_enumerate(VENDOR_ID, CHARGING_CABLE_PRODUCT_ID);
+    bool present = (devs != nullptr);
+    hid_free_enumeration(devs);
+    return present;
 }
 
 void sendDesktopNotification(const QString &summary, const QString &body, const QString &iconName, const QString &urgency = "normal") {
@@ -188,6 +199,14 @@ public slots:
         hid_init();
         bool connected = false;
         handle = nullptr;
+
+        // This checks for charge status at startup
+        if (isHeadsetCharging()) {
+            last_charging = true;
+            if (g_verbose) qDebug() << "Headset already charging at startup";
+            emit batteryUpdated(last_percentage, last_charging);
+        }
+
         while (!handle && !QThread::currentThread()->isInterruptionRequested()) {
             for (size_t i = 0; i < std::size(PRODUCT_ID_ARRAY); i++) {
                 if ((handle = hid_open(VENDOR_ID, PRODUCT_ID_ARRAY[i], nullptr))) {
