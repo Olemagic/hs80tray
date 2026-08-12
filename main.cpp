@@ -373,7 +373,7 @@ int main(int argc, char* argv[]) {
     QLoggingCategory::defaultCategory()->setEnabled(QtDebugMsg, true);
 
     KStatusNotifierItem tray;
-    tray.setCategory(KStatusNotifierItem::Hardware);
+    tray.setCategory(KStatusNotifierItem::ApplicationStatus);
     tray.setStatus(KStatusNotifierItem::Passive);
     QIcon initialIcon = QIcon::fromTheme("battery-missing-symbolic");
     tray.setIconByPixmap(initialIcon.pixmap(64, 64));
